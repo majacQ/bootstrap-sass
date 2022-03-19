@@ -173,6 +173,7 @@ class Converter
       file   = replace_calculation_semantics(file)
       file   = replace_file_imports(file)
       file   = wrap_at_groups_with_at_root(file)
+      file   = replace_division(file)
       file
     end
 
@@ -180,6 +181,44 @@ class Converter
       replace_rules(file, /@(?:font-face|-ms-viewport)/) { |rule, _pos|
         %Q(@at-root {\n#{indent rule, 2}\n})
       }
+    end
+
+    def replace_division(less)
+      re = %r{
+        (?<expression>
+          (?<callee>[[:alpha:]\.]+)?
+          \(
+            (?:
+              (?>
+                (?<dividend>
+                  [^()/]+
+                  |
+                  \([^/]+\)
+                )
+                \s+
+                /
+                \s+
+                (?<divisor>
+                  [^()/]+
+                  |
+                  \([^/]+\)
+                )
+              )
+              |
+              \g<expression>
+            )
+          \)
+        )
+      }x
+      return less if less !~ re
+      "@use \"sass:math\";\n" + less.gsub(re) do
+        named_captures = $~.named_captures
+        callee = named_captures['callee']
+        dividend = named_captures['dividend']
+        divisor = named_captures['divisor']
+        expression = "math.div(#{dividend}, #{divisor})"
+        callee.nil? ? expression : "#{callee}(#{expression})"
+      end
     end
 
     def sass_fn_exists(fn)
